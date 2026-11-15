@@ -28,8 +28,41 @@ const connectedClient = await connectToMongoDB();
 const db = connectedClient.db("hireloopdb");
 const usersCollection = db.collection("user");
 const jobsCollection = db.collection("jobs");
+const sessionCollection = db.collection("session");
 const jobApplicationCollection = db.collection("applications");
 const payments = db.collection("payments");
+
+const verifyToken = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    console.log("authHeader", authHeader)
+    if (!authHeader) {
+        res.status(401).send({ message: "Unauthorized!" });
+        return;
+    }
+
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+        res.status(401).send({ message: "Unauthorized!" });
+        return;
+    }
+
+    const sessions = await sessionCollection.findOne({ token });
+    if (!sessions) {
+        res.status(401).send({ message: "Unauthorized!" });
+        return;
+    }
+
+    const userQuery = { _id: new ObjectId(sessions.userId) };
+    const user = await usersCollection.findOne(userQuery);
+    if (!user) {
+        res.status(401).send({ message: "Unauthorized!" });
+        return;
+    }
+
+    req.user = user;
+    next();
+
+}
 
 app.get("/", (req, res) => {
     res.send("Hire loop is looping!")
@@ -46,6 +79,38 @@ app.get("/user/:id/premium", async (req, res) => {
     res.send(result)
 })
 
+app.patch("/user/:id/role", async (req, res) => {
+    const { id } = req.params;
+    const updateRole = req.body.role;
+
+    // Keep the DB in sync with the roles the UI can render.
+    const allowedRoles = ["seeker", "recruiter", "admin"];
+    if (!allowedRoles.includes(updateRole)) {
+        return res.status(400).send({ success: false, message: "Invalid role" });
+    }
+
+    try {
+        const result = await usersCollection.updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    role: updateRole,
+                    updatedAt: new Date(),
+                }
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ success: false, message: "User not found" });
+        }
+
+        res.send(result);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ success: false, message: "Role update failed", error: err.message });
+    }
+})
+
 app.post("/jobs", async (req, res) => {
     const newJobs = req.body;
     const result = await jobsCollection.insertOne(newJobs);
@@ -53,6 +118,7 @@ app.post("/jobs", async (req, res) => {
 })
 
 app.get("/jobs", async (req, res) => {
+
     const query = {};
 
     console.log("query data", req.query, req.query.jobType);
@@ -110,13 +176,53 @@ app.post("/application", async (req, res) => {
 })
 
 app.get("/applications", async (req, res) => {
+
+    console.log("headers on the server", req.headers);
+
     const query = {};
 
     if (req.query.userId) {
         query.userId = req.query.userId;
     }
 
-    const result = await jobApplicationCollection.find(query).toArray();
+    if (req.query.jobId) {
+        const jobQuery = { _id: new ObjectId(req.query.jobId) };
+        const job = await jobsCollection.findOne(jobQuery);
+        if (job.recureterId !== req.user._id.toString() && req.user.role !== "admin") {
+            res.status(401).send({ message: "Unauthorized!" });
+            return;
+        }
+        query.jobId = req.query.jobId;
+    }
+
+    const applications = await jobApplicationCollection.find(query).toArray();
+
+    // Enrich with the applicant's name (one query for all unique seekers) so
+    // the recruiter review view can show "name + email" instead of email only.
+    const userIds = [...new Set(applications.map(app => app.userId).filter(Boolean))];
+    const objectIds = userIds
+        .map(id => {
+            try {
+                return new ObjectId(id);
+            } catch {
+                return null;
+            }
+        })
+        .filter(Boolean);
+
+    const users = objectIds.length
+        ? await usersCollection
+            .find({ _id: { $in: objectIds } })
+            .project({ name: 1 })
+            .toArray()
+        : [];
+
+    const nameById = new Map(users.map(user => [user._id.toString(), user.name]));
+    const result = applications.map(app => ({
+        ...app,
+        applicantName: nameById.get(app.userId) ?? null,
+    }));
+
     res.send(result);
 })
 
@@ -128,6 +234,33 @@ app.get("/applications/count", async (req, res) => {
 
     const result = await jobApplicationCollection.countDocuments(query);
     res.send({ count: result });
+})
+
+app.patch("/application/:id/status", async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Keep the DB in sync with the statuses the UI can render.
+    const allowedStatuses = ["Applied", "Review", "Shortlisted", "Rejected", "Offered"];
+    if (!allowedStatuses.includes(status)) {
+        return res.status(400).send({ success: false, message: "Invalid status" });
+    }
+
+    try {
+        const result = await jobApplicationCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status, updatedAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ success: false, message: "Application not found" });
+        }
+
+        res.send({ success: true, message: "Application status updated", result });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ success: false, message: "Status update failed", error: err.message });
+    }
 })
 
 app.delete("/application/:id", async (req, res) => {
