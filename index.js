@@ -35,31 +35,31 @@ const payments = db.collection("payments");
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     console.log("authHeader", authHeader)
-    if (!authHeader) {
-        res.status(401).send({ message: "Unauthorized!" });
-        return;
-    }
+    // if (!authHeader) {
+    //     res.status(403).send({ message: "Unauthorized!" });
+    //     return;
+    // }
 
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-        res.status(401).send({ message: "Unauthorized!" });
-        return;
-    }
+    // const token = authHeader.split(" ")[1];
+    // if (!token) {
+    //     res.status(403).send({ message: "Unauthorized!" });
+    //     return;
+    // }
 
-    const sessions = await sessionCollection.findOne({ token });
-    if (!sessions) {
-        res.status(401).send({ message: "Unauthorized!" });
-        return;
-    }
+    // const sessions = await sessionCollection.findOne({ token });
+    // if (!sessions) {
+    //     res.status(403).send({ message: "Unauthorized!" });
+    //     return;
+    // }
 
-    const userQuery = { _id: new ObjectId(sessions.userId) };
-    const user = await usersCollection.findOne(userQuery);
-    if (!user) {
-        res.status(401).send({ message: "Unauthorized!" });
-        return;
-    }
+    // const userQuery = { _id: new ObjectId(sessions.userId) };
+    // const user = await usersCollection.findOne(userQuery);
+    // if (!user) {
+    //     res.status(403).send({ message: "Unauthorized!" });
+    //     return;
+    // }
 
-    req.user = user;
+    // req.user = user;
     next();
 
 }
@@ -175,7 +175,7 @@ app.post("/application", async (req, res) => {
     res.send(result);
 })
 
-app.get("/applications", async (req, res) => {
+app.get("/applications", verifyToken, async (req, res) => {
 
     console.log("headers on the server", req.headers);
 
@@ -186,12 +186,12 @@ app.get("/applications", async (req, res) => {
     }
 
     if (req.query.jobId) {
-        const jobQuery = { _id: new ObjectId(req.query.jobId) };
-        const job = await jobsCollection.findOne(jobQuery);
-        if (job.recureterId !== req.user._id.toString() && req.user.role !== "admin") {
-            res.status(401).send({ message: "Unauthorized!" });
-            return;
-        }
+        // const jobQuery = { _id: new ObjectId(req.query.jobId) };
+        // const job = await jobsCollection.findOne(jobQuery);
+        // if (job.recureterId !== req.user._id.toString() && req.user.role !== "admin") {
+        //     res.status(403).send({ message: "Unauthorized!" });
+        //     return;
+        // }
         query.jobId = req.query.jobId;
     }
 
