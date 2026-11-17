@@ -35,33 +35,61 @@ const payments = db.collection("payments");
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     console.log("authHeader", authHeader)
-    // if (!authHeader) {
-    //     res.status(403).send({ message: "Unauthorized!" });
-    //     return;
-    // }
+    if (!authHeader) {
+        res.status(403).send({ message: "Unauthorized!" });
+        return;
+    }
 
-    // const token = authHeader.split(" ")[1];
-    // if (!token) {
-    //     res.status(403).send({ message: "Unauthorized!" });
-    //     return;
-    // }
+    const token = authHeader.split(" ")[1];
+    console.log("token", token)
+    if (!token) {
+        res.status(403).send({ message: "Unauthorized!" });
+        return;
+    }
 
-    // const sessions = await sessionCollection.findOne({ token });
-    // if (!sessions) {
-    //     res.status(403).send({ message: "Unauthorized!" });
-    //     return;
-    // }
+    const sessions = await sessionCollection.findOne({ token });
+    console.log("session", sessions.token)
+    if (!sessions.token) {
+        res.status(403).send({ message: "Unauthorized!" });
+        return;
+    }
 
-    // const userQuery = { _id: new ObjectId(sessions.userId) };
-    // const user = await usersCollection.findOne(userQuery);
-    // if (!user) {
-    //     res.status(403).send({ message: "Unauthorized!" });
-    //     return;
-    // }
+    const userId = sessions?.userId;
+    const userQuery = { _id: new ObjectId(userId) };
 
-    // req.user = user;
+    const user = await usersCollection.findOne(userQuery);
+    if (!user) {
+        res.status(403).send({ message: "Unauthorized!" });
+        return;
+    }
+
+    req.user = user;
     next();
 
+}
+
+const verifySeeker = (req, res, next) => {
+    if (req.user.role !== "seeker") {
+        res.status(403).send({ message: "Forbiden" })
+        return;
+    }
+    next();
+}
+
+const verifyRecruiter = (req, res, next) => {
+    if (req.user.role !== "recruiter") {
+        res.status(403).send({ message: "Forbiden!" })
+        return;
+    }
+    next()
+}
+
+const verifyAdmin = (req, res, next) => {
+    if (req.user.role !== "admin") {
+        res.status(403).send({ message: "Unauthorized!" })
+        return;
+    }
+    next();
 }
 
 app.get("/", (req, res) => {
@@ -79,7 +107,7 @@ app.get("/user/:id/premium", async (req, res) => {
     res.send(result)
 })
 
-app.patch("/user/:id/role", async (req, res) => {
+app.patch("/user/:id/role", verifyToken, verifyAdmin, async (req, res) => {
     const { id } = req.params;
     const updateRole = req.body.role;
 
@@ -111,7 +139,7 @@ app.patch("/user/:id/role", async (req, res) => {
     }
 })
 
-app.post("/jobs", async (req, res) => {
+app.post("/jobs", verifyToken, verifyRecruiter, async (req, res) => {
     const newJobs = req.body;
     const result = await jobsCollection.insertOne(newJobs);
     res.send(result);
@@ -169,15 +197,13 @@ app.delete("/job/:id", async (req, res) => {
     res.send(result);
 })
 
-app.post("/application", async (req, res) => {
+app.post("/application", verifyToken, async (req, res) => {
     const newApplication = req.body;
     const result = await jobApplicationCollection.insertOne(newApplication);
     res.send(result);
 })
 
 app.get("/applications", verifyToken, async (req, res) => {
-
-    console.log("headers on the server", req.headers);
 
     const query = {};
 
@@ -186,12 +212,14 @@ app.get("/applications", verifyToken, async (req, res) => {
     }
 
     if (req.query.jobId) {
-        // const jobQuery = { _id: new ObjectId(req.query.jobId) };
-        // const job = await jobsCollection.findOne(jobQuery);
-        // if (job.recureterId !== req.user._id.toString() && req.user.role !== "admin") {
-        //     res.status(403).send({ message: "Unauthorized!" });
-        //     return;
-        // }
+        const jobQuery = { _id: new ObjectId(req.query.jobId) };
+        console.log("job Query", jobQuery)
+        const job = await jobsCollection.findOne(jobQuery);
+        console.log("job", job)
+        if (job.recureterId !== req.user._id.toString() && req.user.role !== "admin") {
+            res.status(403).send({ message: "Unauthorized!" });
+            return;
+        }
         query.jobId = req.query.jobId;
     }
 
