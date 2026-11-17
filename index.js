@@ -8,7 +8,7 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
-const port = 5000;
+const port = process.env.SERVER_URL;
 
 app.use(cors());
 app.use(express.json());
@@ -352,3 +352,5 @@ app.post("/payments/checkout-verify", async (req, res) => {
 app.listen(port, () => {
     console.log(`Explore hire loop on port ${port}`)
 })
+
+export default app;
