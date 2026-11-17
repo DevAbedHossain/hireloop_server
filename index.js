@@ -8,7 +8,7 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
-const port = process.env.SERVER_URL;
+const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
